@@ -1,6 +1,6 @@
 import type { SanitizePolicy } from './types';
 
-export const DEFAULT_POLICY: SanitizePolicy = {
+const policy: SanitizePolicy = {
   tags: {
     p: [],
     br: [],
@@ -22,3 +22,11 @@ export const DEFAULT_POLICY: SanitizePolicy = {
   maxLength: 100_000,
   protocols: ['https', 'http', 'mailto'],
 };
+
+// Deep freeze to prevent mutation of security-critical defaults
+Object.freeze(policy);
+Object.freeze(policy.protocols);
+for (const attrs of Object.values(policy.tags)) Object.freeze(attrs);
+Object.freeze(policy.tags);
+
+export const DEFAULT_POLICY: Readonly<SanitizePolicy> = policy;

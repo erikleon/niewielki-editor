@@ -33,7 +33,7 @@
     "src"
   ],
   "scripts": {
-    "build": "node esbuild.config.js && tsc --emitDeclarationOnly",
+    "build": "rm -rf dist && node esbuild.config.js && tsc --emitDeclarationOnly",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:browser": "npx playwright test",

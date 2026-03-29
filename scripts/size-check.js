@@ -1,5 +1,5 @@
-import { execSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
+import { gzipSync } from 'node:zlib';
 
 const BUDGET = 5120; // 5kb in bytes
 
@@ -17,8 +17,7 @@ for (const file of files) {
     console.error(`Missing: ${file}`);
     process.exit(1);
   }
-  const size = execSync(`gzip -c ${file} | wc -c`).toString().trim();
-  const bytes = parseInt(size, 10);
+  const bytes = gzipSync(readFileSync(file)).byteLength;
   total += bytes;
   console.log(`${file}: ${bytes} bytes gzipped`);
 }
