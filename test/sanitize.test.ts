@@ -181,6 +181,13 @@ describe('sanitize', () => {
       const html = '<a href=" java\tscript:alert(1)">click</a>';
       expect(sanitize(html, DEFAULT_POLICY)).toBe('<a>click</a>');
     });
+
+    it('handles malformed URL encoding gracefully', () => {
+      const html = '<a href="%ZZinvalid%encoding">click</a>';
+      const result = sanitize(html, DEFAULT_POLICY);
+      // Should not crash — malformed encoding falls through to protocol check
+      expect(result).toContain('click');
+    });
   });
 
   describe('maxDepth enforcement', () => {
