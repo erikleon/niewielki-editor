@@ -48,8 +48,8 @@ test.describe('OWASP XSS vectors in real browser', () => {
     });
   }
 
-  test('sanitize output is identical between browsers', async ({ page }) => {
-    // Spot-check a few vectors to ensure consistent output
+  test('sanitize output is clean for common attack vectors', async ({ page }) => {
+    // Spot-check common vectors with explicit assertions
     await page.goto('about:blank');
 
     const vectors = [

@@ -169,6 +169,14 @@ export const XSS_VECTORS: XSSVector[] = [
     name: 'newlines in javascript:',
     payload: '<a href="j\na\nv\na\nscript:alert(1)">click</a>',
   },
+  {
+    name: 'zero-width spaces in javascript:',
+    payload: '<a href="j\u200Bavascript:alert(1)">click</a>',
+  },
+  {
+    name: 'non-breaking space in javascript:',
+    payload: '<a href="java\u00A0script:alert(1)">click</a>',
+  },
 
   // --- Paste payloads (rich text) ---
   {
