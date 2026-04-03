@@ -9,7 +9,7 @@ const TAG_NORMALIZE: Record<string, string> = {
 };
 
 /** Attributes that contain URLs and need protocol validation. */
-const URL_ATTRS = new Set(['href', 'src', 'action']);
+const URL_ATTRS = new Set(['href', 'src', 'action', 'formaction']);
 
 /** Protocols that are always denied regardless of policy. */
 const DENIED_PROTOCOLS = new Set(['javascript', 'data']);
@@ -36,8 +36,8 @@ function extractProtocol(value: string): string | null {
   } catch {
     // If URL decoding fails, keep entity-decoded result
   }
-  // Strip whitespace and control characters that browsers ignore
-  decoded = decoded.replace(/[\s\x00-\x1f]+/g, '');
+  // Strip whitespace, control characters, and Unicode whitespace that browsers ignore
+  decoded = decoded.replace(/[\s\x00-\x1f\u00A0\u1680\u2000-\u200B\u2028\u2029\u202F\u205F\u3000\uFEFF]+/g, '');
   const match = decoded.match(/^([a-z][a-z0-9+\-.]*)\s*:/i);
   return match ? match[1].toLowerCase() : null;
 }
