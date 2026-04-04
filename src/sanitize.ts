@@ -100,6 +100,26 @@ function walkAndSanitize(
 }
 
 /**
+ * Sanitize an HTML string and return a DocumentFragment.
+ * Avoids the serialize→reparse round-trip that can cause mXSS.
+ */
+export function sanitizeToFragment(html: string, policy: SanitizePolicy): DocumentFragment {
+  const template = document.createElement('template');
+  if (!html) return template.content;
+
+  template.innerHTML = html;
+  const fragment = template.content;
+
+  walkAndSanitize(fragment, policy, 0);
+
+  if (policy.maxLength > 0 && (fragment.textContent?.length ?? 0) > policy.maxLength) {
+    truncateToLength(fragment, policy.maxLength);
+  }
+
+  return fragment;
+}
+
+/**
  * Sanitize an HTML string according to the given policy.
  *
  * Uses a <template> element to parse HTML without executing scripts.
@@ -109,22 +129,9 @@ function walkAndSanitize(
 export function sanitize(html: string, policy: SanitizePolicy): string {
   if (!html) return '';
 
-  // Parse via <template> — no script execution
-  const template = document.createElement('template');
-  template.innerHTML = html;
-  const fragment = template.content;
-
-  // Walk and sanitize the DOM tree
-  walkAndSanitize(fragment, policy, 0);
-
-  // Enforce maxLength on textContent
+  const fragment = sanitizeToFragment(html, policy);
   const container = document.createElement('div');
   container.appendChild(fragment);
-
-  if (policy.maxLength > 0 && (container.textContent?.length ?? 0) > policy.maxLength) {
-    truncateToLength(container, policy.maxLength);
-  }
-
   return container.innerHTML;
 }
 
