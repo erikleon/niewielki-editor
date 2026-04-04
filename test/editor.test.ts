@@ -283,7 +283,7 @@ describe('Editor Core', () => {
 
     await flush();
     expect(errors.length).toBe(1);
-    expect((errors[0] as Error).message).toContain('Blocked protocol');
+    expect((errors[0] as Error).message).toContain('Protocol not allowed');
     editor.destroy();
   });
 
@@ -298,7 +298,7 @@ describe('Editor Core', () => {
 
     await flush();
     expect(errors.length).toBe(1);
-    expect((errors[0] as Error).message).toContain('Blocked protocol');
+    expect((errors[0] as Error).message).toContain('Protocol not allowed');
     editor.destroy();
   });
 

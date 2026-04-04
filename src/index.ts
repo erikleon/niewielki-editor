@@ -6,7 +6,7 @@ export type {
   Toolbar,
 } from './types';
 export { DEFAULT_POLICY } from './defaults';
-export { sanitize } from './sanitize';
+export { sanitize, sanitizeToFragment } from './sanitize';
 export { createPolicyEnforcer } from './policy';
 export type { PolicyEnforcer } from './policy';
 export { createEditor } from './editor';

@@ -1,13 +1,26 @@
 import type { SanitizePolicy, EditorOptions, Editor } from './types';
 import { DEFAULT_POLICY } from './defaults';
-import { sanitize } from './sanitize';
+import { sanitizeToFragment } from './sanitize';
 import { createPolicyEnforcer, type PolicyEnforcer } from './policy';
+import { isProtocolAllowed } from './shared';
 
 export type { Editor, EditorOptions } from './types';
 export { DEFAULT_POLICY } from './defaults';
 
 type EditorEvent = 'change' | 'paste' | 'overflow' | 'error';
 type EventHandler = (...args: unknown[]) => void;
+
+const SUPPORTED_COMMANDS = new Set([
+  'bold',
+  'italic',
+  'heading',
+  'blockquote',
+  'unorderedList',
+  'orderedList',
+  'link',
+  'unlink',
+  'codeBlock',
+]);
 
 /**
  * Create a contentEditable-based editor with built-in sanitization.
@@ -27,15 +40,16 @@ export function createEditor(
     throw new TypeError('createEditor requires an element attached to the DOM');
   }
 
-  const policy: SanitizePolicy = options?.policy
-    ? { ...options.policy }
-    : {
-        tags: { ...DEFAULT_POLICY.tags },
-        strip: DEFAULT_POLICY.strip,
-        maxDepth: DEFAULT_POLICY.maxDepth,
-        maxLength: DEFAULT_POLICY.maxLength,
-        protocols: [...DEFAULT_POLICY.protocols],
-      };
+  const src = options?.policy ?? DEFAULT_POLICY;
+  const policy: SanitizePolicy = {
+    tags: Object.fromEntries(
+      Object.entries(src.tags).map(([k, v]) => [k, [...v]]),
+    ),
+    strip: src.strip,
+    maxDepth: src.maxDepth,
+    maxLength: src.maxLength,
+    protocols: [...src.protocols],
+  };
 
   const handlers: Record<string, EventHandler[]> = {};
   const doc = element.ownerDocument;
@@ -70,19 +84,14 @@ export function createEditor(
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
         .replace(/\n/g, '<br>');
     }
 
-    // Sanitize through policy
-    const clean = sanitize(html, policy);
-
-    // Check overflow
-    if (
-      policy.maxLength > 0 &&
-      (element.textContent?.length ?? 0) + clean.length > policy.maxLength
-    ) {
-      emit('overflow', policy.maxLength);
-    }
+    // Sanitize through policy — returns DocumentFragment directly
+    // to avoid the serialize→reparse mXSS vector
+    const fragment = sanitizeToFragment(html, policy);
 
     // Insert via Selection/Range API (NOT execCommand('insertHTML'))
     const selection = doc.getSelection();
@@ -91,9 +100,14 @@ export function createEditor(
     const range = selection.getRangeAt(0);
     range.deleteContents();
 
-    const template = doc.createElement('template');
-    template.innerHTML = clean;
-    const fragment = template.content;
+    // Check overflow using text content length
+    if (policy.maxLength > 0) {
+      const pasteTextLen = fragment.textContent?.length ?? 0;
+      const currentLen = element.textContent?.length ?? 0;
+      if (currentLen + pasteTextLen > policy.maxLength) {
+        emit('overflow', policy.maxLength);
+      }
+    }
 
     // Remember last inserted node for cursor positioning
     let lastNode: Node | null = fragment.lastChild;
@@ -108,7 +122,7 @@ export function createEditor(
       selection.addRange(newRange);
     }
 
-    emit('paste', clean);
+    emit('paste', element.innerHTML);
     emit('change', element.innerHTML);
   }
 
@@ -123,84 +137,54 @@ export function createEditor(
 
   const editor: Editor = {
     exec(command: string, value?: string): void {
-      // Validate command
-      const supported = [
-        'bold',
-        'italic',
-        'heading',
-        'blockquote',
-        'unorderedList',
-        'orderedList',
-        'link',
-        'unlink',
-        'codeBlock',
-      ];
-      if (!supported.includes(command)) {
+      if (!SUPPORTED_COMMANDS.has(command)) {
         throw new Error(`Unknown editor command: "${command}"`);
       }
 
       element.focus();
-      let success = false;
 
       switch (command) {
         case 'bold':
-          success = doc.execCommand('bold', false);
+          doc.execCommand('bold', false);
           break;
         case 'italic':
-          success = doc.execCommand('italic', false);
+          doc.execCommand('italic', false);
           break;
         case 'heading': {
           const level = value ?? '1';
           if (!['1', '2', '3'].includes(level)) {
             throw new Error(`Invalid heading level: "${level}". Use 1, 2, or 3`);
           }
-          success = doc.execCommand('formatBlock', false, `<h${level}>`);
+          doc.execCommand('formatBlock', false, `<h${level}>`);
           break;
         }
         case 'blockquote':
-          success = doc.execCommand('formatBlock', false, '<blockquote>');
+          doc.execCommand('formatBlock', false, '<blockquote>');
           break;
         case 'unorderedList':
-          success = doc.execCommand('insertUnorderedList', false);
+          doc.execCommand('insertUnorderedList', false);
           break;
         case 'orderedList':
-          success = doc.execCommand('insertOrderedList', false);
+          doc.execCommand('insertOrderedList', false);
           break;
         case 'link': {
           if (!value) {
             throw new Error('Link command requires a URL value');
           }
-          // Validate URL protocol before creating link
           const trimmed = value.trim();
-          // Use shared protocol validation logic inline to stay lightweight
-          // javascript: and data: are always blocked by the sanitizer/observer,
-          // but we reject them here too for immediate feedback
-          const protoMatch = trimmed.match(/^([a-z][a-z0-9+\-.]*)\s*:/i);
-          if (protoMatch) {
-            const proto = protoMatch[1].toLowerCase();
-            if (proto === 'javascript' || proto === 'data') {
-              emit('error', new Error(`Blocked protocol: ${proto}`));
-              return;
-            }
-            if (!policy.protocols.includes(proto)) {
-              emit('error', new Error(`Protocol not allowed: ${proto}`));
-              return;
-            }
+          if (!isProtocolAllowed(trimmed, policy.protocols)) {
+            emit('error', new Error(`Protocol not allowed: ${trimmed}`));
+            return;
           }
-          success = doc.execCommand('createLink', false, trimmed);
+          doc.execCommand('createLink', false, trimmed);
           break;
         }
         case 'unlink':
-          success = doc.execCommand('unlink', false);
+          doc.execCommand('unlink', false);
           break;
         case 'codeBlock':
-          // Handled in Day 7
-          success = doc.execCommand('formatBlock', false, '<pre>');
+          doc.execCommand('formatBlock', false, '<pre>');
           break;
-      }
-
-      if (!success) {
-        emit('error', new Error(`Command "${command}" failed`));
       }
     },
 
