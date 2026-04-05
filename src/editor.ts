@@ -74,6 +74,33 @@ export function createEditor(
     const clipboard = e.clipboardData;
     if (!clipboard) return;
 
+    // Inside code block: paste as plain text only
+    const sel = doc.getSelection();
+    if (sel && sel.rangeCount > 0 && sel.anchorNode) {
+      const pre = findAncestor(sel.anchorNode, 'PRE');
+      if (pre) {
+        const text = clipboard.getData('text/plain');
+        if (!text) return;
+        if (policy.maxLength > 0) {
+          const currentLen = element.textContent?.length ?? 0;
+          if (currentLen + text.length > policy.maxLength) {
+            emit('overflow', policy.maxLength);
+          }
+        }
+        const range = sel.getRangeAt(0);
+        range.deleteContents();
+        const textNode = doc.createTextNode(text);
+        range.insertNode(textNode);
+        range.setStartAfter(textNode);
+        range.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(range);
+        emit('paste', element.innerHTML);
+        emit('change', element.innerHTML);
+        return;
+      }
+    }
+
     // Prefer HTML, fall back to plain text
     let html = clipboard.getData('text/html');
     if (!html) {
@@ -132,8 +159,61 @@ export function createEditor(
     options?.onChange?.(element.innerHTML);
   }
 
+  // Keydown handler for code block behavior
+  function onKeydown(e: KeyboardEvent): void {
+    const sel = doc.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    const anchor = sel.anchorNode;
+    if (!anchor) return;
+
+    const pre = findAncestor(anchor, 'PRE');
+
+    if (e.key === 'Enter' && pre) {
+      // Insert newline instead of new paragraph
+      e.preventDefault();
+      const range = sel.getRangeAt(0);
+      range.deleteContents();
+      const textNode = doc.createTextNode('\n');
+      range.insertNode(textNode);
+      range.setStartAfter(textNode);
+      range.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(range);
+      emit('change', element.innerHTML);
+    }
+
+    if (e.key === 'Backspace' && pre) {
+      // At start of empty pre, convert to <p>
+      const text = pre.textContent || '';
+      const isAtStart = sel.anchorOffset === 0;
+      const isEmpty = text === '' || text === '\n';
+      if (isAtStart && isEmpty) {
+        e.preventDefault();
+        const p = doc.createElement('p');
+        p.appendChild(doc.createElement('br'));
+        pre.parentNode?.replaceChild(p, pre);
+        const range = doc.createRange();
+        range.selectNodeContents(p);
+        range.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(range);
+        emit('change', element.innerHTML);
+      }
+    }
+  }
+
+  element.addEventListener('keydown', onKeydown);
   element.addEventListener('paste', onPaste);
   element.addEventListener('input', onInput);
+
+  function findAncestor(node: Node, tagName: string): Element | null {
+    let current: Node | null = node;
+    while (current && current !== element) {
+      if (current.nodeType === 1 && (current as Element).tagName === tagName) return current as Element;
+      current = current.parentNode;
+    }
+    return null;
+  }
 
   function hasAncestor(node: Node, tagName: string): boolean {
     let current: Node | null = node;
@@ -191,9 +271,47 @@ export function createEditor(
         case 'unlink':
           doc.execCommand('unlink', false);
           break;
-        case 'codeBlock':
-          doc.execCommand('formatBlock', false, '<pre>');
+        case 'codeBlock': {
+          const sel = doc.getSelection();
+          if (!sel || sel.rangeCount === 0) break;
+          const anchor = sel.anchorNode;
+          const pre = anchor ? findAncestor(anchor, 'PRE') : null;
+          if (pre) {
+            // Toggle off: unwrap <pre><code> to <p>
+            const p = doc.createElement('p');
+            p.textContent = pre.textContent || '';
+            pre.parentNode?.replaceChild(p, pre);
+            const r = doc.createRange();
+            r.selectNodeContents(p);
+            r.collapse(false);
+            sel.removeAllRanges();
+            sel.addRange(r);
+          } else {
+            // Wrap current block in <pre><code>
+            const range = sel.getRangeAt(0);
+            let block = range.startContainer;
+            while (block.parentNode && block.parentNode !== element) {
+              block = block.parentNode;
+            }
+            const pre2 = doc.createElement('pre');
+            const code = doc.createElement('code');
+            const blockText = block.textContent || '';
+            code.textContent = blockText.endsWith('\n') ? blockText : blockText + '\n';
+            pre2.appendChild(code);
+            if (block.parentNode === element) {
+              element.replaceChild(pre2, block);
+            } else {
+              element.appendChild(pre2);
+            }
+            const r = doc.createRange();
+            r.selectNodeContents(code);
+            r.collapse(false);
+            sel.removeAllRanges();
+            sel.addRange(r);
+          }
+          emit('change', element.innerHTML);
           break;
+        }
       }
     },
 
@@ -241,6 +359,7 @@ export function createEditor(
     },
 
     destroy(): void {
+      element.removeEventListener('keydown', onKeydown);
       element.removeEventListener('paste', onPaste);
       element.removeEventListener('input', onInput);
       enforcer.destroy();

@@ -506,13 +506,18 @@ describe('Editor Core', () => {
     editor.destroy();
   });
 
-  it('exec codeBlock calls formatBlock with pre', () => {
+  it('exec codeBlock wraps in pre via DOM API', () => {
     const editor = createEditor(container);
     container.innerHTML = '<p>code</p>';
-    selectAll(container);
-    document.execCommand = vi.fn(() => true);
+    const p = container.querySelector('p')!;
+    const range = document.createRange();
+    range.selectNodeContents(p);
+    range.collapse(true);
+    const sel = document.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
     editor.exec('codeBlock');
-    expect(document.execCommand).toHaveBeenCalledWith('formatBlock', false, '<pre>');
+    expect(container.querySelector('pre')).not.toBeNull();
     editor.destroy();
   });
 
@@ -556,6 +561,156 @@ describe('Editor Core', () => {
     editor.exec('unorderedList');
     editor.exec('orderedList');
     editor.exec('codeBlock');
+    editor.destroy();
+  });
+
+  it('exec codeBlock wraps content in pre>code', () => {
+    const editor = createEditor(container);
+    container.innerHTML = '<p>hello world</p>';
+    // Place cursor inside the paragraph
+    const p = container.querySelector('p')!;
+    const range = document.createRange();
+    range.selectNodeContents(p);
+    range.collapse(true);
+    const sel = document.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+
+    editor.exec('codeBlock');
+
+    expect(container.querySelector('pre')).not.toBeNull();
+    expect(container.querySelector('pre code')).not.toBeNull();
+    expect(container.querySelector('pre code')!.textContent).toContain('hello world');
+    editor.destroy();
+  });
+
+  it('exec codeBlock toggles off when inside pre', () => {
+    const editor = createEditor(container);
+    container.innerHTML = '<pre><code>some code</code></pre>';
+    // Place cursor inside code element
+    const code = container.querySelector('code')!;
+    const range = document.createRange();
+    range.setStart(code.firstChild!, 2);
+    range.collapse(true);
+    const sel = document.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+
+    editor.exec('codeBlock');
+
+    expect(container.querySelector('pre')).toBeNull();
+    expect(container.querySelector('p')).not.toBeNull();
+    expect(container.textContent).toContain('some code');
+    editor.destroy();
+  });
+
+  it('Enter inside code block inserts newline', () => {
+    const editor = createEditor(container);
+    container.innerHTML = '<pre><code>line1</code></pre>';
+    const code = container.querySelector('code')!;
+    const range = document.createRange();
+    range.setStart(code.firstChild!, 5);
+    range.collapse(true);
+    const sel = document.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+
+    const event = new KeyboardEvent('keydown', {
+      key: 'Enter',
+      bubbles: true,
+      cancelable: true,
+    });
+    container.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(container.querySelector('pre')!.textContent).toContain('\n');
+    editor.destroy();
+  });
+
+  it('Backspace at start of empty code block converts to paragraph', () => {
+    const editor = createEditor(container);
+    container.innerHTML = '<pre><code>\n</code></pre>';
+    const code = container.querySelector('code')!;
+    const range = document.createRange();
+    range.setStart(code.firstChild!, 0);
+    range.collapse(true);
+    const sel = document.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+
+    const event = new KeyboardEvent('keydown', {
+      key: 'Backspace',
+      bubbles: true,
+      cancelable: true,
+    });
+    container.dispatchEvent(event);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(container.querySelector('pre')).toBeNull();
+    expect(container.querySelector('p')).not.toBeNull();
+    editor.destroy();
+  });
+
+  it('Backspace inside non-empty code block behaves normally', () => {
+    const editor = createEditor(container);
+    container.innerHTML = '<pre><code>abc</code></pre>';
+    const code = container.querySelector('code')!;
+    const range = document.createRange();
+    range.setStart(code.firstChild!, 2);
+    range.collapse(true);
+    const sel = document.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+
+    const event = new KeyboardEvent('keydown', {
+      key: 'Backspace',
+      bubbles: true,
+      cancelable: true,
+    });
+    container.dispatchEvent(event);
+
+    // Should NOT be prevented — let browser handle normal backspace
+    expect(event.defaultPrevented).toBe(false);
+    expect(container.querySelector('pre')).not.toBeNull();
+    editor.destroy();
+  });
+
+  it('paste inside code block strips formatting', async () => {
+    const editor = createEditor(container);
+    container.innerHTML = '<pre><code>existing</code></pre>';
+    const code = container.querySelector('code')!;
+    const range = document.createRange();
+    range.setStart(code.firstChild!, 8);
+    range.collapse(true);
+    const sel = document.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+
+    const pasteEvent = createPasteEvent({
+      'text/html': '<p><strong>bold</strong> text</p>',
+      'text/plain': 'bold text',
+    });
+    container.dispatchEvent(pasteEvent);
+
+    await flush();
+    // Should paste as plain text, no formatting
+    expect(container.querySelector('pre strong')).toBeNull();
+    expect(container.querySelector('pre')!.textContent).toContain('bold text');
+    editor.destroy();
+  });
+
+  it('code block content is sanitized', async () => {
+    const editor = createEditor(container);
+    cursorToEnd(container);
+
+    const pasteEvent = createPasteEvent({
+      'text/html': '<pre><code><script>alert(1)</script>safe code</code></pre>',
+    });
+    container.dispatchEvent(pasteEvent);
+
+    await flush();
+    expect(container.querySelector('script')).toBeNull();
+    expect(container.textContent).toContain('safe code');
     editor.destroy();
   });
 
