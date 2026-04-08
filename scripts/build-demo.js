@@ -1,6 +1,11 @@
 import { build } from 'esbuild';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
+
+if (!existsSync('dist/index.js')) {
+  console.error('dist/index.js not found. Run `npm run build` first.');
+  process.exit(1);
+}
 
 // Build a self-contained IIFE bundle just for the demo so the inlined script
 // can reference exports by name (e.g. minisiwyg.createEditor).
@@ -16,8 +21,14 @@ const result = await build({
   write: false,
 });
 
-const js = result.outputFiles[0].text;
-const css = readFileSync('src/toolbar.css', 'utf8');
+// Escape `</script` and `</style` so the inlined bundle and CSS cannot
+// terminate their host tags early, even if a future source string contains
+// those literals.
+const escapeForScript = (s) => s.replace(/<\/script/gi, '<\\/script');
+const escapeForStyle = (s) => s.replace(/<\/style/gi, '<\\/style');
+
+const js = escapeForScript(result.outputFiles[0].text);
+const css = escapeForStyle(readFileSync('src/toolbar.css', 'utf8'));
 
 // Use the production gzipped size from dist/index.js for the footer claim,
 // since that's what users actually ship.
@@ -87,5 +98,6 @@ ${js}
 </html>
 `;
 
+mkdirSync('demo', { recursive: true });
 writeFileSync('demo/index.html', html);
 console.log('wrote demo/index.html (full bundle gzipped: ' + distSize + ' bytes)');
