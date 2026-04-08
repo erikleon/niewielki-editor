@@ -1,4 +1,7 @@
 dist/
+demo/index.html
 node_modules/
 coverage/
+test-results/
+playwright-report/
 *.tgz
