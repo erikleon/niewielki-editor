@@ -63,6 +63,13 @@ const html = `<!doctype html>
   }
   footer { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #eee; color: #666; font-size: 13px; }
   code { background: #eef; padding: 1px 4px; border-radius: 3px; }
+  pre.snippet {
+    background: #0f1419; color: #e6e1cf; padding: 12px 14px; border-radius: 4px;
+    font: 12.5px/1.5 ui-monospace, Menlo, monospace; overflow: auto;
+  }
+  pre.snippet code { background: transparent; color: inherit; padding: 0; }
+  h2 { margin-top: 2rem; font-size: 1.15rem; }
+  h3 { margin-top: 1.25rem; font-size: 1rem; }
 ${css}
 </style>
 </head>
@@ -75,6 +82,32 @@ ${css}
 
 <h3>Live HTML output</h3>
 <pre class="output" id="output"></pre>
+
+<h2>How to use</h2>
+
+<p>Install from npm:</p>
+<pre class="snippet"><code>npm install minisiwyg-editor</code></pre>
+
+<h3>Editor + toolbar</h3>
+<pre class="snippet"><code>import { createEditor } from 'minisiwyg-editor';
+import { createToolbar } from 'minisiwyg-editor/toolbar';
+
+const editor = createEditor(document.querySelector('#editor'), {
+  onChange: (html) =&gt; console.log(html),
+});
+
+const toolbar = createToolbar(editor);
+document.querySelector('#toolbar').appendChild(toolbar.element);</code></pre>
+
+<h3>Standalone sanitizer</h3>
+<pre class="snippet"><code>import { sanitize, DEFAULT_POLICY } from 'minisiwyg-editor/sanitize';
+
+const dirty = '&lt;p onclick="alert(1)"&gt;Hi &lt;strong&gt;there&lt;/strong&gt;&lt;/p&gt;';
+const clean = sanitize(dirty, DEFAULT_POLICY);
+// → '&lt;p&gt;Hi &lt;strong&gt;there&lt;/strong&gt;&lt;/p&gt;'</code></pre>
+
+<p>Full API docs, custom policies, and security model:
+<a href="https://github.com/erikleon/minisiwyg-editor#readme">README on GitHub</a>.</p>
 
 <footer>
   This entire editor is <strong>${distSize} bytes</strong> gzipped (full ESM bundle, all 4 modules).
