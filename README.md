@@ -4,6 +4,12 @@ A sub-5kb gzipped, zero-dependency WYSIWYG editor with built-in XSS protection.
 
 Spiritual successor to [Pell](https://github.com/jaredreich/pell) (~1.2kb, 12k stars, abandoned with known XSS vulnerabilities). minisiwyg-editor treats security as architecture, not an afterthought. The sanitizer is built into the editor via a declarative policy engine, not bolted on as a dependency.
 
+## Live Demo
+
+Try it in your browser: **[erikleon.github.io/minisiwyg-editor](https://erikleon.github.io/minisiwyg-editor/)**
+
+The demo runs the full editor + toolbar in ~3.5kb gzipped. Paste an XSS payload (`<img src=x onerror=alert(1)>`) and watch the sanitizer strip it in real time.
+
 ## Features
 
 - **Tiny.** ~3.5kb gzipped total. 5kb hard limit enforced in CI.
@@ -21,7 +27,21 @@ npm install minisiwyg-editor
 ```
 
 ```typescript
-import { sanitize, DEFAULT_POLICY } from 'minisiwyg-editor';
+import { createEditor } from 'minisiwyg-editor';
+import { createToolbar } from 'minisiwyg-editor/toolbar';
+
+const editor = createEditor(document.querySelector('#editor')!, {
+  onChange: (html) => console.log(html),
+});
+
+const toolbar = createToolbar(editor);
+document.querySelector('#toolbar')!.appendChild(toolbar.element);
+```
+
+Or use the sanitizer standalone, with no editor:
+
+```typescript
+import { sanitize, DEFAULT_POLICY } from 'minisiwyg-editor/sanitize';
 
 const dirty = '<p onclick="alert(1)">Hello <script>steal(cookies)</script><strong>world</strong></p>';
 const clean = sanitize(dirty, DEFAULT_POLICY);
@@ -43,8 +63,11 @@ minisiwyg-editor ships four independent modules. Each can be imported separately
 // Use just the sanitizer
 import { sanitize, DEFAULT_POLICY } from 'minisiwyg-editor/sanitize';
 
-// Use the full editor (coming soon)
+// Use the full editor
 import { createEditor } from 'minisiwyg-editor';
+
+// Add the optional toolbar
+import { createToolbar } from 'minisiwyg-editor/toolbar';
 ```
 
 ## Sanitizer
@@ -143,6 +166,45 @@ const permissive: SanitizePolicy = {
   protocols: ['https', 'http', 'mailto'],
 };
 ```
+
+## Editor API
+
+```typescript
+import { createEditor } from 'minisiwyg-editor';
+
+const editor = createEditor(element, {
+  policy: DEFAULT_POLICY,         // optional, defaults to DEFAULT_POLICY
+  onChange: (html) => save(html), // optional change callback
+});
+```
+
+The returned `Editor` exposes:
+
+| Method | Description |
+|---|---|
+| `exec(command, value?)` | Run a formatting command. See commands below. |
+| `queryState(command)` | Returns `true` if the format is active at the cursor. |
+| `getHTML()` | Returns the current sanitized HTML. |
+| `getText()` | Returns the current text content. |
+| `on(event, handler)` | Subscribe to `change`, `paste`, `overflow`, or `error` events. |
+| `destroy()` | Disconnect the observer and remove all listeners. |
+
+Supported commands: `bold`, `italic`, `heading` (with value `'1'`, `'2'`, or `'3'`), `blockquote`, `unorderedList`, `orderedList`, `link` (with URL value), `unlink`, `codeBlock`.
+
+## Toolbar
+
+```typescript
+import { createToolbar } from 'minisiwyg-editor/toolbar';
+
+const toolbar = createToolbar(editor, {
+  // Optional. Defaults to all built-in actions in this order:
+  actions: ['bold', 'italic', 'heading', 'unorderedList', 'orderedList', 'link', 'codeBlock'],
+});
+
+document.body.appendChild(toolbar.element);
+```
+
+The toolbar renders a `<div role="toolbar">` containing `<button>` elements with `aria-label` and `aria-pressed` attributes. Arrow keys move focus between buttons; Tab exits the toolbar. The link button uses `window.prompt()` to collect a URL and validates it against the active policy's protocols. Call `toolbar.destroy()` to remove it.
 
 ## Security Model
 
